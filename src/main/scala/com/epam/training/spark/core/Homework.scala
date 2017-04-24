@@ -1,5 +1,7 @@
 package com.epam.training.spark.core
 
+import java.time.LocalDate
+
 import com.epam.training.spark.core.domain.Climate
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
@@ -59,17 +61,34 @@ object Homework {
 
   }
 
-  def getRawDataWithoutHeader(sc: SparkContext, rawDataPath: String): RDD[List[String]] = ???
+  def getRawDataWithoutHeader(sc: SparkContext, rawDataPath: String): RDD[List[String]] =
+    sc.textFile(rawDataPath)
+      .filter(!_.startsWith("#"))
+      .map(_.split(";", 7).toList)
 
-  def findErrors(rawData: RDD[List[String]]): List[Int] = ???
+  def findErrors(rawData: RDD[List[String]]): List[Int] =
+    rawData.
+      map( _.map ( s => if ( s.isEmpty ) 1 else 0 ) ).
+      reduce((a,b) => (a,b).zipped.map(_+_))
 
-  def mapToClimate(rawData: RDD[List[String]]): RDD[Climate] = ???
+  def mapToClimate(rawData: RDD[List[String]]): RDD[Climate] =
+    rawData.map(r => Climate(r.head,r(1),r(2),r(3),r(4),r(5),r(6)))
 
-  def averageTemperature(climateData: RDD[Climate], month: Int, dayOfMonth: Int): RDD[Double] = ???
+  def averageTemperature(climateData: RDD[Climate], month: Int, dayOfMonth: Int): RDD[Double] =
+    climateData.
+      filter(c => c.observationDate.getMonthValue == month && c.observationDate.getDayOfMonth == dayOfMonth).
+      map( _.meanTemperature.value )
 
-  def predictTemperature(climateData: RDD[Climate], month: Int, dayOfMonth: Int): Double = ???
+  def predictTemperature(climateData: RDD[Climate], month: Int, dayOfMonth: Int): Double = {
+    val d = LocalDate.of(2017,month,dayOfMonth)
+    val reduced = avgTempWithCounter(climateData,d).
+      union(avgTempWithCounter(climateData,d.minusDays(1))).
+      union(avgTempWithCounter(climateData,d.plusDays(1))).
+      reduce( (a, b) => (a._1 + b._1, a._2 + b._2) )
 
+    reduced._1/reduced._2
+  }
 
+  def avgTempWithCounter(climateData: RDD[Climate], d: LocalDate): RDD[(Double, Int)] =
+    averageTemperature(climateData,d.getMonthValue, d.getDayOfMonth).map( (_,1) )
 }
-
-
